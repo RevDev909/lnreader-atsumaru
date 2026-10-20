@@ -165,7 +165,7 @@ class AtsumaruPlugin implements Plugin.PluginBase {
   name = 'Atsumaru';
   icon = 'src/en/atsumaru/icon.png';
   site = 'https://atsu.moe';
-  version = '1.0.0';
+  version = '1.0.1';
 
   async popularNovels(
     pageNo: number,
@@ -242,7 +242,7 @@ class AtsumaruPlugin implements Plugin.PluginBase {
   }
 
   resolveUrl = (path: string, _isNovel?: boolean) =>
-    `${this.site}/title/${path}`;
+    /^https?:\/\//i.test(path) ? path : `${this.site}/title/${path}`;
 }
 
 export default new AtsumaruPlugin();
