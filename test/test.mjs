@@ -33,11 +33,12 @@ async function get(url) {
   return res.text();
 }
 
-function searchUrl(q, sortBy, page) {
+function searchUrl(q, sortBy, page, extraFilter) {
+  const filter = extraFilter ? FILTER + ' && ' + extraFilter : FILTER;
   return (
     `${SITE}/collections/manga/documents/search?q=${encodeURIComponent(q)}` +
     `&query_by=${encodeURIComponent(QUERY_BY)}&page=${page}&per_page=24` +
-    `&filter_by=${encodeURIComponent(FILTER)}&sort_by=${encodeURIComponent(sortBy)}`
+    `&filter_by=${encodeURIComponent(filter)}&sort_by=${encodeURIComponent(sortBy)}`
   );
 }
 
@@ -52,6 +53,29 @@ console.log('catalog (popular, page 1):');
   );
   const beyond = parseNovelCards(await get(searchUrl('*', 'views:desc', 999)));
   check('page past the end is empty', beyond.length === 0, beyond.length);
+}
+
+console.log('genre filter (server-side, Typesense genreIds):');
+{
+  // Fantasy = id 36. Verify at the API level, not just through the
+  // parser: every hit on a filtered page must actually carry the id.
+  const raw = await get(searchUrl('*', 'views:desc', 1, 'genreIds:=36'));
+  const data = JSON.parse(raw);
+  check('filtered search returns hits', data.hits.length > 0, data.hits.length);
+  check(
+    'every filtered hit carries genre 36',
+    data.hits.every(h => (h.document.genreIds || []).includes('36')),
+  );
+  const cards = parseNovelCards(raw);
+  check('filtered cards parse (24)', cards.length === 24, cards.length);
+  const page2 = parseNovelCards(
+    await get(searchUrl('*', 'views:desc', 2, 'genreIds:=36')),
+  );
+  check('filtered page 2 parses', page2.length > 0, page2.length);
+  const latest = parseNovelCards(
+    await get(searchUrl('*', 'dateAdded:desc', 1, 'genreIds:=9')),
+  );
+  check('latest + genre (Romance) parses', latest.length > 0, latest.length);
 }
 
 console.log('search:');

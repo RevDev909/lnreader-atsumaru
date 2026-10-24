@@ -170,13 +170,55 @@ const QUERY_BY = 'title,englishTitle,otherNames,authors,acronyms';
 const FILTER = 'medium:=Novel && hidden:!=true';
 const PER_PAGE = 24;
 
-function searchUrl(query: string, sortBy: string, pageNo: number): string {
+// Genre list for the browse filter, sorted A-Z by name. The site has no
+// genre-list endpoint, so this was built by walking the whole catalog
+// (2,669 novels, 11 search pages) and resolving every genre id that
+// actually appears through a novel detail page. Only 21 ids exist, so
+// the list is complete, not a sample. Defined above the plugin class on
+// purpose: the filters field reads it at construction time.
+const GENRE_OPTIONS: { label: string; value: string }[] = [
+  { label: 'All', value: '0' },
+  { label: 'Action', value: '39' },
+  { label: 'Adult', value: '46' },
+  { label: 'Adventure', value: '37' },
+  { label: 'Boys Love', value: '180' },
+  { label: 'Comedy', value: '6' },
+  { label: 'Drama', value: '31' },
+  { label: 'Fantasy', value: '36' },
+  { label: 'Girls Love', value: '4' },
+  { label: 'Hentai', value: '10' },
+  { label: 'Historical', value: '45' },
+  { label: 'Horror', value: '44' },
+  { label: 'Martial Arts', value: '29' },
+  { label: 'Mystery', value: '32' },
+  { label: 'Psychological', value: '18' },
+  { label: 'Romance', value: '9' },
+  { label: 'Sci-Fi', value: '1' },
+  { label: 'Slice of Life', value: '7' },
+  { label: 'Smut', value: '41' },
+  { label: 'Supernatural', value: '22' },
+  { label: 'Thriller', value: '19' },
+  { label: 'Tragedy', value: '5' },
+];
+
+function searchUrl(
+  query: string,
+  sortBy: string,
+  pageNo: number,
+  genreId?: string,
+): string {
+  let filter = FILTER;
+  // Only a numeric id from the Picker ever reaches the query, so a
+  // crafted filter value cannot inject extra Typesense clauses.
+  if (genreId && genreId !== '0' && /^\d+$/.test(genreId)) {
+    filter += ' && genreIds:=' + genreId;
+  }
   return (
     `${SITE}/collections/manga/documents/search` +
     `?q=${encodeURIComponent(query)}` +
     `&query_by=${encodeURIComponent(QUERY_BY)}` +
     `&page=${pageNo}&per_page=${PER_PAGE}` +
-    `&filter_by=${encodeURIComponent(FILTER)}` +
+    `&filter_by=${encodeURIComponent(filter)}` +
     `&sort_by=${encodeURIComponent(sortBy)}`
   );
 }
@@ -186,7 +228,20 @@ class AtsumaruPlugin implements Plugin.PluginBase {
   name = 'Atsumaru';
   icon = 'src/en/atsumaru/icon.png';
   site = 'https://atsu.moe';
-  version = '1.0.2';
+  version = '1.1.0';
+
+  // The app renders this as a Picker in the browse filter sheet and
+  // passes the chosen value back in options.filters.genre.value.
+  // 'Picker' is the app's FilterTypes.Picker string value, so no
+  // @libs/filterInputs import is needed here.
+  filters = {
+    genre: {
+      label: 'Genre',
+      value: '0',
+      options: GENRE_OPTIONS,
+      type: 'Picker',
+    },
+  };
 
   async popularNovels(
     pageNo: number,
@@ -194,7 +249,17 @@ class AtsumaruPlugin implements Plugin.PluginBase {
   ): Promise<Plugin.NovelItem[]> {
     const sortBy =
       options && options.showLatestNovels ? 'dateAdded:desc' : 'views:desc';
-    const text = await fetchText(searchUrl('*', sortBy, pageNo));
+    // Latest keeps its own sort even with a genre picked; the genre
+    // only narrows the result set, it never replaces the sort.
+    const rawFilters: any =
+      options && (options as any).filters ? (options as any).filters : {};
+    const genreValue: string =
+      rawFilters.genre && typeof rawFilters.genre.value === 'string'
+        ? rawFilters.genre.value
+        : '0';
+    const text = await fetchText(
+      searchUrl('*', sortBy, pageNo, genreValue),
+    );
     return parseNovelCards(text);
   }
 
